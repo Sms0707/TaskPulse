@@ -1,7 +1,0 @@
-dependencies:
-  flutter:
-    sdk: flutter
-  http: ^1.1.0
-  speech_to_text: ^6.5.1
-  flutter_local_notifications: ^16.1.0
-  intl: ^0.18.1
