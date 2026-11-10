@@ -113,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   
   // Update with your IP or 127.0.0.1
-  final String backendUrl = "[http://10.128.3.80:8000/process_voice](http://10.128.3.80:8000/process_voice)"; 
+  final String backendUrl = "https://taskpulse-backend-21l4.onrender.com/"; 
 
   @override
   void initState() {
