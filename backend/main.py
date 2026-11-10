@@ -1,48 +1,57 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import google.generativeai as genai
-import os
+from groq import Groq
 import json
-from datetime import datetime, timedelta
+
+client = Groq(api_key="groq_api_key")
 
 app = FastAPI()
 
-# Configure your Gemini API key in your WSL environment variables
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-1.5-pro')
-
 class VoiceInput(BaseModel):
     text: str
-    current_time: str 
+    current_time: str
 
 @app.post("/process_voice")
 async def process_voice(data: VoiceInput):
-    prompt = f"""
-    You are an AI task assistant. The user said: "{data.text}". 
-    The current date and time is {data.current_time}.
-    
-    Determine the user's intent: 'add_task' or 'mark_complete'.
-    If 'add_task', extract the task name, determine a strict ISO 8601 deadline, and calculate a reminder time exactly 30 minutes BEFORE the deadline.
-    Assign a priority (High, Medium, Low) based on urgency.
-    If the task is complex (e.g., "plan a project"), generate 2-3 short subtasks.
-    
-    Output strictly in JSON format without markdown blocks:
-    {{
-        "intent": "add_task" | "mark_complete",
-        "task_name": "string",
-        "deadline": "ISO 8601 string or null",
-        "reminder_time": "ISO 8601 string or null",
-        "priority": "High" | "Medium" | "Low",
-        "subtasks": ["string", "string"]
-    }}
-    """
     try:
-        response = model.generate_content(prompt)
-        # Clean up any potential markdown formatting from the response
-        clean_json = response.text.replace('```json', '').replace('```', '').strip()
-        result = json.loads(clean_json)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        prompt = f"""
+        You are an AI task assistant. The user said: "{data.text}".
+        The current date and time is {data.current_time}.
 
-# Run locally using: uvicorn main:app --host 0.0.0.0 --port 8000
+        Determine the user's intent: 'add_task', 'mark_complete', 'delete_task', or 'delete_all_tasks'.
+        
+        - If 'add_task': Extract task_name, deadline (ISO-8601 or null), reminder_time (30 mins before deadline or null), priority ('High', 'Medium', 'Low'). 
+          CRITICAL: ONLY generate 'subtasks' (list of strings) IF the task is complex and actually requires breakdown steps. If it's a simple task, return an empty array [].
+        - If 'mark_complete': Extract 'task_name'.
+        - If 'delete_task': Extract 'task_name'.
+        - If 'delete_all_tasks': The user wants to clear or remove everything. Return null for other fields.
+
+        You MUST respond ONLY with a valid JSON object matching this exact structure:
+        {{
+            "intent": "add_task",
+            "task_name": "Example Task",
+            "deadline": null,
+            "reminder_time": null,
+            "priority": "Low",
+            "subtasks": []
+        }}
+        """
+
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You are a precise task management assistant that outputs only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            model="openai/gpt-oss-20b",
+        )
+
+        response_text = chat_completion.choices[0].message.content.strip()
+        if response_text.startswith("```json"): response_text = response_text[7:]
+        if response_text.startswith("```"): response_text = response_text[3:]
+        if response_text.endswith("```"): response_text = response_text[:-3]
+
+        return json.loads(response_text.strip())
+        
+    except Exception as e:
+        print(f"CRITICAL BACKEND ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
